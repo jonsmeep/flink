@@ -126,6 +126,8 @@ public class KinesisProxy implements KinesisProxyInterface {
 	/** Maximum retry attempts for the get shard iterator operation. */
 	private final int getShardIteratorMaxRetries;
 
+	private final boolean discardShardSequence;
+
 	/**
 	 * Create a new KinesisProxy based on the supplied configuration properties.
 	 *
@@ -187,7 +189,10 @@ public class KinesisProxy implements KinesisProxyInterface {
 			configProps.getProperty(
 				ConsumerConfigConstants.SHARD_GETITERATOR_RETRIES,
 				Long.toString(ConsumerConfigConstants.DEFAULT_SHARD_GETITERATOR_RETRIES)));
-
+		this.discardShardSequence = Boolean.valueOf(
+			configProps.getProperty(
+				"flink.shard.discard-sequence",
+				Boolean.FALSE.toString()));
 	}
 
 	/**
@@ -287,10 +292,15 @@ public class KinesisProxy implements KinesisProxyInterface {
 				break;
 			case AT_SEQUENCE_NUMBER:
 			case AFTER_SEQUENCE_NUMBER:
-				if (startingMarker instanceof String) {
-					getShardIteratorRequest.setStartingSequenceNumber((String) startingMarker);
+				if (!discardShardSequence) {
+					if (startingMarker instanceof String) {
+						getShardIteratorRequest.setStartingSequenceNumber((String) startingMarker);
+					} else {
+						throw new IllegalArgumentException("Invalid object given for GetShardIteratorRequest() when ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER. Must be a String.");
+					}
 				} else {
-					throw new IllegalArgumentException("Invalid object given for GetShardIteratorRequest() when ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER. Must be a String.");
+					LOG.info("Discarding shard sequence " + startingMarker);
+					getShardIteratorRequest.setShardIteratorType(ShardIteratorType.LATEST);
 				}
 		}
 		return getShardIterator(getShardIteratorRequest);
